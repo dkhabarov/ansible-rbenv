@@ -1,102 +1,117 @@
 ---
-- name: update apt cache
-  apt:
-    update_cache: yes
-  tags: [install_rbenv,install_ruby_build]
-
-- name: Install dependencies for rbenv
-  apt: 
-    pkg: git
-  tags: install_rbenv
+- include: Debian.yml
+  when: ansible_os_family == "Debian"
 
 - name: Install rbenv
-  sudo: yes
-  sudo_user: "{{ rbenv.user }}"
+  become: yes
+  become_user: "{{ item.username }}"
   git: 
     repo: git://github.com/sstephenson/rbenv.git 
     dest: "~/.rbenv"
     accept_hostkey: yes 
-    version: "{{ rbenv.version | default('HEAD') }}"
-  tags: install_rbenv
+    version: "{{ item.rbenv_version | default('HEAD') }}"
+  with_items:
+    - "{{ rbenv_users }}"
+  when:
+    - rbenv_users is defined
+  tags: 
+    - install_rbenv
+    - install_ruby_build
 
-- name: Add ~.rbenv/bin to PATH
-  sudo: yes
-  sudo_user: "{{ rbenv.user }}"
-  lineinfile: >
-    dest="~/.profile"
-    line="export PATH=$HOME/.rbenv/bin:$PATH"
-  tags: install_rbenv
-
-- name: Eval rbenv init in ~/.profile
-  sudo: yes
-  sudo_user: "{{ rbenv.user }}"
-  lineinfile: >
-    dest="~/.profile"
-    line='eval "$(rbenv init -)"'
-  tags: install_rbenv
+- name: Install rbenv.sh
+  template:
+    src: etc/profile.d/rbenv.sh.j2
+    dest: /etc/profile.d/rbenv.sh
+  tags: 
+    - install_rbenv
+    - install_ruby_build
 
 - name: Copy .gemrc to ~/.gemrc
-  sudo: yes
-  sudo_user: "{{ rbenv.user }}"
-  copy: src={{ item }} dest=~/.gemrc
-  with_first_found:
-    - ../../../files/.gemrc
-    - .gemrc
+  become: yes
+  become_user: "{{ item.username }}"
+  copy:
+    src: .gemrc 
+    dest: ~/.gemrc
+  with_items:
+    - "{{ rbenv_users }}"
+  when:
+    - rbenv_users is defined
   tags: install_rbenv
 
-- name: Install dependencies for ruby-build
-  apt: pkg={{ item }}
-  with_items:
-    - autoconf
-    - bison
-    - build-essential
-    - libssl-dev
-    - libyaml-dev
-    - libreadline-dev
-    - libffi-dev
-    - zlib1g
-    - zlib1g-dev
-  tags: install_ruby_build
-
 - name: Install ruby-build as rbenv plugin
-  sudo: yes
-  sudo_user: "{{ rbenv.user }}"
+  become: yes
+  become_user: "{{ item.username }}"
   git: 
     repo: https://github.com/sstephenson/ruby-build.git 
     dest: ~/.rbenv/plugins/ruby-build
-  tags: install_ruby_build
+  with_items:
+    - "{{ rbenv_users }}"
+  when:
+    - rbenv_users is defined
+  tags: 
+    - install_rbenv
+    - install_ruby_build
 
-- name: Check if requirement ruby version is installed
-  shell: "sudo -iu {{ rbenv.user }} rbenv versions | grep {{ rbenv.ruby_version }}"
-  register: rbenv_check_install
-  changed_when: False
-  ignore_errors: True
+- name: "Install {{item.1.version }}"
+  become: yes
+  become_method: sudo
+  become_user: "{{ item.0.username }}"
+  command: "rbenv install -s {{ item.1.version }}"
+  environment:
+     PATH: "{{ lookup('env','HOME') }}/.rbenv/bin:{{ lookup('env','PATH') }}"
+  with_subelements:
+    - rbenv_users
+    - ruby_versions
   tags: install_ruby
+  when:
+    - rbenv_users is defined 
+    - item.1.state == 'present'
 
-- name: "Install {{ rbenv.ruby_version }}"
-  command: "sudo -iu {{ rbenv.user }} rbenv install {{ rbenv.ruby_version }}"
-  when: rbenv_check_install|failed
-  tags: install_ruby
+- name: "uninstall ruby version {{item.1.version }}"
+  become: yes
+  become_method: sudo
+  become_user: "{{ item.0.username }}"
+  command: "rbenv uninstall -f {{ item.1.version }}"
+  environment:
+     PATH: "{{ lookup('env','HOME') }}/.rbenv/bin:{{ lookup('env','PATH') }}"
+  with_subelements:
+    - rbenv_users
+    - ruby_versions
+  tags: remove_ruby
+  when:
+    - rbenv_users is defined 
+    - item.1.state == 'absent'
 
-- name: "Check if {{ rbenv.ruby_version }} is the default ruby version"
-  shell: "sudo -iu {{ rbenv.user }} rbenv version | grep {{ rbenv.ruby_version }}"
-  register: rbenv_check_default
-  changed_when: False
-  ignore_errors: True
+- name: "set default ruby version {{item.1.version }}"
+  become: yes
+  become_method: sudo
+  become_user: "{{ item.0.username }}"
+  command: "rbenv global {{ item.1.version }}"
+  environment:
+     PATH: "{{ lookup('env','HOME') }}/.rbenv/bin:{{ lookup('env','PATH') }}"
+  with_subelements:
+    - rbenv_users
+    - ruby_versions
   tags: install_ruby
-
-- name: "Set default ruby version to {{ rbenv.ruby_version }}"
-  shell: "sudo -iu {{ rbenv.user }} rbenv global {{ rbenv.ruby_version }}"
-  when: rbenv_check_default|failed
-  tags: install_ruby
+  when:
+    - rbenv_users is defined
+    - item.1.default is defined
+    - item.1.default
 
 - name: install bundler
-  shell: 'sudo -iu {{ rbenv.user }} rbenv exec gem list -i bundler'
-  register: gem_bundler
-  changed_when: False
-  ignore_errors: True
-
-- name: install bundler
-  shell: "sudo -iu {{ rbenv.user }} rbenv exec gem install bundler"
-  when: "'false' in gem_bundler.stdout"
-
+  become: yes
+  become_method: sudo
+  become_user: "{{ item.0.username }}"
+  command: "rbenv exec gem install bundler"
+  environment:
+     PATH: "{{ lookup('env','HOME') }}/.rbenv/bin:{{ lookup('env','PATH') }}"
+     RUBY_VERSION: "{{item.1.version }}"
+  with_subelements:
+    - rbenv_users
+    - ruby_versions
+  tags:
+      - install_ruby
+      - install_bundler
+  when:
+    - rbenv_users is defined 
+    - item.1.state == 'present'

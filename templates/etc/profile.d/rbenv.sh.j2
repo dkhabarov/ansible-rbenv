@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+export PATH=$HOME/.rbenv/bin:$PATH
+command_exists () {
+  command "$1" &> /dev/null ;
+}
+if command_exists rbenv
+then
+eval "$(rbenv init -)"
+fi

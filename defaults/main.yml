@@ -1,5 +1,14 @@
 ---
-rbenv:
-  user: '{{ ansible_user_id }}'
-  version: HEAD
-  ruby_version: 2.2.3
+#rbenv_users:
+#  - username: developer1
+#    rbenv_version: HEAD
+#    ruby_versions:
+#      - version: 2.2.2
+#        state: present
+ #     - version: 2.2.3
+ #       state: present
+ #     - version: 2.2.4
+ #       state: present
+ #     - version: 2.2.5
+ #       default: yes
+ #       state: present
