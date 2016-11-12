@@ -31,7 +31,7 @@
   become_user: "{{ item.username }}"
   copy:
     src: .gemrc 
-    dest: ~/.gemrc
+    dest: "{{ lookup('env','HOME') }}/.gemrc"
   with_items:
     - "{{ rbenv_users }}"
   when:
